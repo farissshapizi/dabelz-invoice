@@ -1,0 +1,61 @@
+name: DeeZack — Threads auto-post
+
+on:
+  schedule:
+    # 12:23 UTC = 8:23 malam waktu Malaysia (waktu puncak Threads).
+    # Minit bukan :00 sebab GitHub sering lewatkan job tepat pada jam.
+    - cron: "23 12 * * *"
+    # Panjangkan token setiap 1 & 15 hari bulan, 03:17 UTC.
+    - cron: "17 3 1,15 * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (tunjuk sahaja, tak post)"
+        type: boolean
+        default: true
+      date:
+        description: "Tarikh content (YYYY-MM-DD), kosong = hari ini"
+        type: string
+        default: ""
+
+concurrency:
+  group: deezack
+  cancel-in-progress: false
+
+jobs:
+  post:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '23 12 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Semak content
+        run: node deezack/scripts/post.mjs --check
+      - name: Post ke Threads
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            node deezack/scripts/post.mjs --date="${{ inputs.date }}"
+          else
+            node deezack/scripts/post.mjs
+          fi
+
+  refresh-token:
+    if: github.event.schedule == '17 3 1,15 * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Panjangkan token Threads
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+        run: node deezack/scripts/refresh-token.mjs --ci
